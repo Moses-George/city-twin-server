@@ -6,5 +6,5 @@ router = APIRouter(prefix="/simulate", tags=["simulate"])
 
 
 @router.post("", response_model=SimulationResult)
-def simulate(params: ScenarioParams) -> SimulationResult:
+async def simulate(params: ScenarioParams) -> SimulationResult:
     return run_simulation(params)

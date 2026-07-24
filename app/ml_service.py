@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 import joblib
 import numpy as np
-from core.config import settings
+from .core.config import settings
 
 
 class MLService:

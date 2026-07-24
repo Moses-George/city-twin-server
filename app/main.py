@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import district, live, ml, scenarios, sensors, simulate
-from core.config import settings
+from .core.config import settings
 
 app = FastAPI(
     title="CityTwin API",

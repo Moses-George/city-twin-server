@@ -46,7 +46,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from core.database import get_db
+from ..core.database import get_async_db
 from ..schemas import (
     EnergyPredictRequest,
     TrafficPredictRequest,
@@ -56,6 +56,7 @@ from ..schemas import (
 )
 from ..ml_service import ml_service
 from .. import crud
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -63,7 +64,7 @@ ANOMALY_FEATURE_KINDS = ["energy_kw", "temp_c", "occupancy_pct", "congestion"]
 
 
 @router.post("/energy/predict")
-def energy_predict(req: EnergyPredictRequest):
+async def energy_predict(req: EnergyPredictRequest):
     feats = req.model_dump()
     for t in ("residential", "office", "retail", "industrial"):
         feats[f"type_{t}"] = 1.0 if feats["building_type"] == t else 0.0
@@ -73,7 +74,7 @@ def energy_predict(req: EnergyPredictRequest):
 
 
 @router.post("/traffic/predict")
-def traffic_predict(req: TrafficPredictRequest):
+async def traffic_predict(req: TrafficPredictRequest):
     if len(req.history) < 1:
         raise HTTPException(
             status_code=422, detail="history must have at least 1 point"
@@ -83,10 +84,10 @@ def traffic_predict(req: TrafficPredictRequest):
 
 
 @router.post("/traffic/predict/{road_id}")
-def traffic_predict_from_history(road_id: str, db: Session = Depends(get_db)):
+async def traffic_predict_from_history(road_id: str, db: AsyncSession = Depends(get_async_db)):
     """Same as /traffic/predict but pulls the last 24 stored readings for
     this road instead of requiring the caller to pass history explicitly."""
-    rows = crud.latest_readings_for_source(db, road_id, n=24)
+    rows = await crud.latest_readings_for_source(db, road_id, n=24)
     if not rows:
         raise HTTPException(status_code=404, detail=f"No stored readings for {road_id}")
     history = [r.value for r in rows]
@@ -99,8 +100,8 @@ def traffic_predict_from_history(road_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/anomaly/score")
-def anomaly_score(req: AnomalyScoreRequest):
-    y = ml_service.anomaly_score(req.features)
+async def anomaly_score(req: AnomalyScoreRequest):
+    y = await ml_service.anomaly_score(req.features)
     return {
         "model_loaded": y is not None,
         "anomaly_score": y,
@@ -109,7 +110,7 @@ def anomaly_score(req: AnomalyScoreRequest):
 
 
 @router.get("/anomaly/live", response_model=AnomalyBySourceResult)
-def anomaly_live(source_id: str = "district", db: Session = Depends(get_db)):
+async def anomaly_live(source_id: str = "district", db: AsyncSession = Depends(get_async_db)):
     """Builds the [energy_kw, temp_c, occupancy_pct, congestion] feature
     vector the Isolation Forest was trained on from the most recent stored
     reading of each kind for `source_id`, then scores it. Feed real values
@@ -117,7 +118,7 @@ def anomaly_live(source_id: str = "district", db: Session = Depends(get_db)):
     feats = []
     latest_value: Optional[float] = None
     for kind in ANOMALY_FEATURE_KINDS:
-        rows = crud.list_sensor_readings(db, source_id=source_id, kind=kind, limit=1)
+        rows = await crud.list_sensor_readings(db, source_id=source_id, kind=kind, limit=1)
         if not rows:
             return AnomalyBySourceResult(
                 source_id=source_id,
@@ -141,7 +142,7 @@ def anomaly_live(source_id: str = "district", db: Session = Depends(get_db)):
 
 
 @router.post("/scenario/predict")
-def scenario_predict(req: ScenarioPredictRequest):
+async def scenario_predict(req: ScenarioPredictRequest):
     feats = [
         req.solar_adoption_pct,
         req.ev_share_pct,
